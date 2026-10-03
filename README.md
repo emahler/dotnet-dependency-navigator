@@ -5,6 +5,8 @@ namespace or type and see what it uses and what uses it, in expandable groups. S
 inheritance trees, lists the methods behind each reference and opens the source line in
 Visual Studio. Reads C# source directly, without a build.
 
+![The viewer with a focused type in the middle, the types that use it on the left and the types it uses on the right](Screenshot.png)
+
 ## What it shows
 
 The viewer is one browser page with three columns:
