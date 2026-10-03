@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dependency navigator</title>
+<style>
+  :root {
+    --background: #f6f7f9;
+    --surface: #ffffff;
+    --border: #d5d9e0;
+    --text: #1c2330;
+    --text-muted: #667085;
+    --accent: #2563eb;
+    --accent-soft: #dbe7ff;
+    --hover: #eef1f5;
+    --connector: #b3bac6;
+    --row-height: 26px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #15181d;
+      --surface: #1e2229;
+      --border: #363c47;
+      --text: #e4e7ec;
+      --text-muted: #98a2b3;
+      --accent: #7aa7ff;
+      --accent-soft: #263a60;
+      --hover: #282d36;
+      --connector: #555d6b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex;
+    flex-direction: column;
+    background: var(--background);
+    color: var(--text);
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 20px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0; font-size: 15px; }
+  header input[type=search], header select {
+    font: inherit;
+    color: inherit;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 6px;
+  }
+  header input[type=search] { width: 340px; }
+  #legend { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--text-muted); font-size: 12px; }
+  #generated { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+  main {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px) minmax(0, 1fr);
+    column-gap: 90px;
+    padding: 12px 16px;
+  }
+  .column { display: flex; flex-direction: column; min-height: 0; }
+  .column h2 { margin: 0 0 6px; font-size: 13px; color: var(--text-muted); font-weight: 600; }
+  .rows {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--row-height);
+    padding-right: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .row:hover { background: var(--hover); }
+  .row.selected { background: var(--accent-soft); }
+  .row.group .name { font-weight: 600; }
+  .row.indirect .name { color: var(--text-muted); font-style: italic; }
+  .row .toggle { width: 14px; text-align: center; color: var(--text-muted); flex: none; }
+  .row .name { overflow: hidden; text-overflow: ellipsis; }
+  .row .count { margin-left: auto; color: var(--text-muted); font-size: 12px; flex: none; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .kind {
+    display: inline-block;
+    width: 14px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+    border-radius: 3px;
+    color: #fff;
+    background: #1971c2;
+    flex: none;
+  }
+  .kind.interface { background: #2b8a3e; }
+  .kind.enum, .kind.struct, .kind.delegate { background: #8b95a5; }
+  .muted { color: var(--text-muted); }
+  .panel h4 { margin: 6px 0 2px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .empty { padding: 10px; color: var(--text-muted); }
+  #focus { overflow-y: auto; }
+  #breadcrumb { min-height: 20px; margin-bottom: 6px; color: var(--text-muted); }
+  a, .link { color: var(--accent); cursor: pointer; text-decoration: none; }
+  a:hover, .link:hover { text-decoration: underline; }
+  #card {
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  #card .title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+  #card .subtitle { color: var(--text-muted); overflow-wrap: anywhere; }
+  .panel {
+    margin-top: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .panel h3 { margin: 0 0 4px; font-size: 13px; }
+  .panel ul { margin: 0; padding-left: 16px; }
+  .panel li { overflow-wrap: anywhere; }
+  .hint { color: var(--text-muted); }
+  #connectors { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #connectors path { fill: none; stroke: var(--connector); stroke-width: 1; }
+  #connectors path.selected { stroke: var(--accent); stroke-width: 2; }
+  #connectors path.click-area {
+    stroke: transparent;
+    stroke-width: 10;
+    pointer-events: stroke;
+    cursor: pointer;
+  }
+  .row .tag {
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    flex: none;
+  }
+  .tree-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #focus > * { flex: none; }
+  .tree-line.focus { font-weight: 600; }
+  .tree-list { margin-top: 6px; overflow-wrap: anywhere; }
+  #connectors marker path { fill: var(--connector); stroke: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dependency navigator</h1>
+  <input id="search" type="search" list="projectNames" placeholder="Find a project or a type by name">
+  <datalist id="projectNames"></datalist>
+  <label>Show dependencies between
+    <select id="level">
+      <option value="project">projects (project references)</option>
+      <option value="type">types (references in the source code)</option>
+    </select>
+  </label>
+  <label>Group by
+    <select id="grouping">
+      <option value="topLevelDirectory">top-level directory, then tier</option>
+      <option value="tier">tier, then top-level directory</option>
+    </select>
+  </label>
+  <label><input id="includeIndirect" type="checkbox"> Include indirect dependencies</label>
+  <label id="useVisualStudioLabel" hidden>
+    <input id="useVisualStudio" type="checkbox" checked> Open source links in Visual Studio
+  </label>
+  <span id="legend"></span>
+  <span id="generated"></span>
+</header>
+<main>
+  <section id="usedBy" class="column">
+    <h2></h2>
+    <div class="rows"></div>
+  </section>
+  <section id="focus" class="column">
+    <div id="breadcrumb"></div>
+    <div id="card"></div>
+    <div id="contents"></div>
+    <div id="details"></div>
+  </section>
+  <section id="uses" class="column">
+    <h2></h2>
+    <div class="rows"></div>
+  </section>
+  <svg id="connectors">
+    <defs>
+      <marker id="arrowHead" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7"
+              orient="auto">
+        <path d="M0,0 L8,4 L0,8 z"></path>
+      </marker>
+    </defs>
+    <g id="connectorPaths"></g>
+  </svg>
+</main>
+
+<script>
+const model = /*DEPENDENCY_MODEL*/null;
+
+const projects = model.projects;
+const types = model.types;
+const rowHeight = 26;
+const listedReferenceLimit = 300;
+const referenceKindNames = ['uses', 'implements', 'inherits'];
+const tierColors = ['#8b95a5', '#e5484d', '#f08c00', '#2b8a3e', '#1971c2', '#7048e8',
+                    '#c2255c', '#0c8599', '#5c940d', '#a16207', '#6b7280', '#d6336c'];
+
+const typeReferenceKinds = new Map(
+  model.typeReferences.map(([from, to, kind]) => [from * types.length + to, kind]));
+
+// baseTypesOf[i] lists the types that type i inherits from, interfacesOf[i] the interfaces
+// that it implements, derivedTypesOf[i] the types that inherit from or implement type i.
+const baseTypesOf = types.map(() => []);
+const interfacesOf = types.map(() => []);
+const derivedTypesOf = types.map(() => []);
+for (const [from, to, kind] of model.typeReferences) {
+  if (kind === 0) {
+    continue;
+  }
+  (kind === 2 ? baseTypesOf : interfacesOf)[from].push(to);
+  derivedTypesOf[to].push(from);
+}
+
+// The methods behind a reference and the source files come from the tool running in its
+// "serve" mode. They are not available when this page is opened as a file.
+const isServed = location.protocol.startsWith('http');
+
+const state = {
+  level: 'project',                     // 'project' or 'type'
+  grouping: 'topLevelDirectory',
+  includeIndirect: false,
+  focusId: '',
+  selection: null,                       // { side, nodeId }
+  expandedGroupIds: { usedBy: new Set(), uses: new Set() }
+};
+
+// A leaf is an element of the current level: a project or a type. usesOf[i] lists the
+// leaves that leaf i references; usedByOf[i] lists the leaves that reference leaf i.
+let usesOf;
+let usedByOf;
+let leafNodes;
+let rootNode;
+let nodesById;
+
+const sides = {
+  usedBy: { title: 'Used by' },
+  uses: { title: 'Uses' }
+};
+
+// ---------------------------------------------------------------- model of the level
+
+function buildDependencies() {
+  const isTypeLevel = state.level === 'type';
+  const leafCount = isTypeLevel ? types.length : projects.length;
+
+  usesOf = Array.from({ length: leafCount }, () => []);
+  usedByOf = Array.from({ length: leafCount }, () => []);
+  for (const [referencingIndex, referencedIndex] of
+       isTypeLevel ? model.typeReferences : model.references) {
+    usesOf[referencingIndex].push(referencedIndex);
+    usedByOf[referencedIndex].push(referencingIndex);
+  }
+  sides.uses.adjacency = usesOf;
+  sides.usedBy.adjacency = usedByOf;
+}
+
+function getTypeId(type) {
+  return `type:${projects[type.project].name}/${type.namespace}.${type.name}`;
+}
+
+function buildContainmentTree() {
+  const groupKeys = state.grouping === 'tier'
+    ? ['tier', 'topLevelDirectory'] : ['topLevelDirectory', 'tier'];
+
+  rootNode = { id: '', name: 'Whole repository', children: [], parent: null, leafIndexes: [] };
+  nodesById = new Map([['', rootNode]]);
+  leafNodes = [];
+
+  const addNode = (node, parent) => {
+    node.parent = parent;
+    node.children = [];
+    node.leafIndexes = [];
+    nodesById.set(node.id, node);
+    parent.children.push(node);
+    return node;
+  };
+  const registerLeaf = (leafNode, leafIndex) => {
+    leafNode.leafIndex = leafIndex;
+    leafNodes[leafIndex] = leafNode;
+    for (let node = leafNode; node; node = node.parent) {
+      node.leafIndexes.push(leafIndex);
+    }
+  };
+
+  const projectNodes = projects.map((project, projectIndex) => {
+    let parent = rootNode;
+    for (const groupKey of groupKeys) {
+      const id = (parent === rootNode ? 'group:' : parent.id + '/') + project[groupKey];
+      parent = nodesById.get(id) ?? addNode({ id, name: project[groupKey], groupKey }, parent);
+    }
+    const projectNode = addNode({ id: project.path, name: project.name, project }, parent);
+    if (state.level === 'project') {
+      registerLeaf(projectNode, projectIndex);
+    }
+    return projectNode;
+  });
+
+  if (state.level === 'type') {
+    types.forEach((type, typeIndex) => {
+      const projectNode = projectNodes[type.project];
+      const namespaceId = `namespace:${projectNode.name}/${type.namespace}`;
+      const namespaceNode = nodesById.get(namespaceId) ??
+        addNode({ id: namespaceId, name: type.namespace || '(no namespace)' }, projectNode);
+      registerLeaf(
+        addNode({ id: getTypeId(type), name: type.name, type }, namespaceNode), typeIndex);
+    });
+  }
+
+  removeEmptyNodes(rootNode);
+  sortChildren(rootNode);
+}
+
+// At the type level, a project without source types has nothing to show.
+function removeEmptyNodes(node) {
+  node.children = node.children.filter(child => {
+    if (child.leafIndexes.length === 0) {
+      nodesById.delete(child.id);
+      return false;
+    }
+    return true;
+  });
+  node.children.forEach(removeEmptyNodes);
+}
+
+function sortChildren(node) {
+  node.children.sort((first, second) =>
+    first.groupKey === 'tier' && second.groupKey === 'tier'
+      ? model.tiers.indexOf(first.name) - model.tiers.indexOf(second.name)
+      : first.name.localeCompare(second.name));
+  node.children.forEach(sortChildren);
+}
+
+function isLeaf(node) {
+  return node.leafIndex !== undefined;
+}
+
+// ---------------------------------------------------------------- dependencies
+
+// Returns a map from each leaf reached from the start leaves to its distance
+// (1 = referenced directly) and the leaf through which it was reached.
+function findReachedLeaves(startIndexes, adjacency) {
+  const start = new Set(startIndexes);
+  const reached = new Map();
+  let currentIndexes = startIndexes;
+  let distance = 0;
+
+  while (currentIndexes.length > 0) {
+    distance++;
+    const nextIndexes = [];
+    for (const fromIndex of currentIndexes) {
+      for (const toIndex of adjacency[fromIndex]) {
+        if (start.has(toIndex) || reached.has(toIndex)) {
+          continue;
+        }
+        reached.set(toIndex, { distance, previousIndex: fromIndex });
+        nextIndexes.push(toIndex);
+      }
+    }
+    if (!state.includeIndirect) {
+      break;
+    }
+    currentIndexes = nextIndexes;
+  }
+  return reached;
+}
+
+// Keeps only the part of the containment tree that contains reached leaves.
+function createSideRow(node, reached) {
+  if (isLeaf(node)) {
+    const entry = reached.get(node.leafIndex);
+    return entry
+      ? { node, children: [], reachedCount: 1, directCount: entry.distance === 1 ? 1 : 0 }
+      : null;
+  }
+  const children = node.children.map(child => createSideRow(child, reached)).filter(Boolean);
+  if (children.length === 0) {
+    return null;
+  }
+  return {
+    node, children,
+    reachedCount: children.reduce((sum, child) => sum + child.reachedCount, 0),
+    directCount: children.reduce((sum, child) => sum + child.directCount, 0)
+  };
+}
+
+// Expands groups, smallest first, as long as all rows still fit into the column.
+function chooseExpandedGroupIds(topRows, rowBudget) {
+  const expandedIds = new Set();
+  let visibleRowCount = topRows.length;
+  const candidates = topRows.filter(row => row.children.length > 0);
+
+  while (true) {
+    candidates.sort((first, second) => first.children.length - second.children.length);
+    const index = candidates.findIndex(
+      row => visibleRowCount + row.children.length <= rowBudget);
+    if (index < 0) {
+      break;
+    }
+    const [row] = candidates.splice(index, 1);
+    expandedIds.add(row.node.id);
+    visibleRowCount += row.children.length;
+    candidates.push(...row.children.filter(child => child.children.length > 0));
+  }
+  return expandedIds;
+}
+
+// ---------------------------------------------------------------- rendering
+
+function createElement(tagName, className, text) {
+  const element = document.createElement(tagName);
+  if (className) {
+    element.className = className;
+  }
+  if (text !== undefined) {
+    element.textContent = text;
+  }
+  return element;
+}
+
+function describe(node) {
+  if (node.type) {
+    const type = node.type;
+    return `${type.kind} ${type.namespace}.${type.name} (${type.file}:${type.line})`;
+  }
+  return node.project ? node.project.path : node.name;
+}
+
+function createFocusLink(node, text) {
+  const link = createElement('span', 'link', text ?? node.name);
+  link.title = describe(node);
+  link.addEventListener('click', () => setFocus(node.id));
+  return link;
+}
+
+// A coloured dot for the tier of a project, or a letter for the kind of a type.
+function createMarker(node) {
+  if (node.type) {
+    const marker = createElement('span', 'kind ' + node.type.kind,
+                                 node.type.kind[0].toUpperCase());
+    marker.title = node.type.kind;
+    return marker;
+  }
+  if (node.project) {
+    return createTierDot(node.project.tier);
+  }
+  return null;
+}
+
+// Opens the source file in one separate window that is reused for every link.
+function createSourceLink(text, file, line, mentionLines) {
+  if (!isServed) {
+    return createElement('span', '', text);
+  }
+  const link = createElement('span', 'link', text);
+  link.title = `Show ${file}:${line}`;
+  link.addEventListener('click', () => showSource(file, line, mentionLines));
+  return link;
+}
+
+// Shows the line in a running Visual Studio if that is switched on and one is running,
+// otherwise in the separate browser window.
+async function showSource(file, line, mentionLines) {
+  const fileAndLine = `file=${encodeURIComponent(file)}&line=${line}`;
+
+  if (document.getElementById('useVisualStudio').checked) {
+    const response = await fetch('api/open-in-visual-studio?' + fileAndLine);
+    if (response.ok) {
+      return;
+    }
+    // The browser allows opening a window only directly in a click, not after waiting
+    // for the answer above. So the browser window opens with the next click.
+    document.getElementById('useVisualStudio').checked = false;
+    alert((await response.text()) +
+          '. Source links now open in the browser window. Click the link again.');
+    return;
+  }
+  window.open(`source?${fileAndLine}&mentions=${mentionLines.join(',')}`,
+              'dependencyNavigatorSource', 'width=1000,height=900');
+}
+
+function createTierDot(tierName) {
+  const dot = createElement('span', 'dot');
+  dot.style.background = tierColors[model.tiers.indexOf(tierName) % tierColors.length];
+  dot.title = 'Tier: ' + tierName;
+  return dot;
+}
+
+function countText(count) {
+  const unit = state.level === 'type' ? 'type' : 'project';
+  return count === 1 ? `1 ${unit}` : `${count} ${unit}s`;
+}
+
+function render(resetExpansion) {
+  const focusNode = nodesById.get(state.focusId) ?? rootNode;
+  state.focusId = focusNode.id;
+
+  for (const side of Object.keys(sides)) {
+    const reached = findReachedLeaves(focusNode.leafIndexes, sides[side].adjacency);
+    const topRow = createSideRow(rootNode, reached);
+    sides[side].reached = reached;
+    sides[side].topRows = topRow ? topRow.children : [];
+
+    const container = document.querySelector(`#${side} .rows`);
+    if (resetExpansion) {
+      state.expandedGroupIds[side] = chooseExpandedGroupIds(
+        sides[side].topRows, Math.floor(container.clientHeight / rowHeight));
+    }
+    renderSide(side, container, focusNode);
+  }
+
+  renderFocus(focusNode);
+  renderDetails(focusNode);
+  drawConnectors();
+}
+
+// Names the inheritance between the focused type and the type of a row, or returns null
+// if the reference between them is an ordinary use.
+function getInheritanceLabel(side, focusNode, rowNode) {
+  if (!focusNode.type || !rowNode.type) {
+    return null;
+  }
+  const [fromIndex, toIndex] = side === 'uses'
+    ? [focusNode.leafIndex, rowNode.leafIndex] : [rowNode.leafIndex, focusNode.leafIndex];
+  const kind = typeReferenceKinds.get(fromIndex * types.length + toIndex);
+  if (!kind) {
+    return null;
+  }
+  return side === 'uses' ? (kind === 2 ? 'base type' : 'implemented interface')
+                         : referenceKindNames[kind];
+}
+
+function renderSide(side, container, focusNode) {
+  const { title, reached, topRows } = sides[side];
+  const expandedIds = state.expandedGroupIds[side];
+
+  document.querySelector(`#${side} h2`).textContent = `${title} (${countText(reached.size)})`;
+  container.replaceChildren();
+
+  if (topRows.length === 0) {
+    container.append(createElement('div', 'empty', 'Nothing outside the focus.'));
+    return;
+  }
+
+  const appendRow = (row, depth) => {
+    const node = row.node;
+    const isGroup = !isLeaf(node);
+    const isExpanded = isGroup && expandedIds.has(node.id);
+
+    const element = createElement('div', 'row');
+    element.classList.toggle('group', isGroup);
+    element.classList.toggle('expanded', isExpanded);
+    element.classList.toggle('indirect', row.directCount === 0);
+    element.classList.toggle(
+      'selected', state.selection?.side === side && state.selection.nodeId === node.id);
+    element.style.paddingLeft = (8 + depth * 18) + 'px';
+    element.title = (isGroup ? `${describe(node)}: ${countText(row.reachedCount)}`
+                             : describe(node)) + '. Double click to focus.';
+
+    const toggle = createElement('span', 'toggle', isGroup ? (isExpanded ? '▾' : '▸') : '');
+    if (isGroup) {
+      toggle.addEventListener('click', event => {
+        event.stopPropagation();
+        if (!expandedIds.delete(node.id)) {
+          expandedIds.add(node.id);
+        }
+        render(false);
+      });
+    }
+    element.append(toggle);
+
+    const marker = createMarker(node);
+    if (marker) {
+      element.append(marker);
+    }
+    element.append(createElement('span', 'name', node.name));
+    if (isGroup) {
+      element.append(createElement('span', 'count', String(row.reachedCount)));
+    }
+    const inheritanceLabel = getInheritanceLabel(side, focusNode, node);
+    if (inheritanceLabel) {
+      element.append(createElement('span', 'tag', inheritanceLabel));
+    }
+
+    element.addEventListener('click', () => selectRow(side, node.id));
+    element.addEventListener('dblclick', () => setFocus(node.id));
+    container.append(element);
+
+    if (isExpanded) {
+      row.children.forEach(child => appendRow(child, depth + 1));
+    }
+  };
+
+  topRows.forEach(row => appendRow(row, 0));
+}
+
+function renderFocus(focusNode) {
+  const breadcrumb = document.getElementById('breadcrumb');
+  breadcrumb.replaceChildren();
+  const ancestors = [];
+  for (let node = focusNode.parent; node; node = node.parent) {
+    ancestors.unshift(node);
+  }
+  for (const ancestor of ancestors) {
+    breadcrumb.append(createFocusLink(ancestor), ' › ');
+  }
+
+  const card = document.getElementById('card');
+  card.replaceChildren(createElement('div', 'title', focusNode.name));
+  const addSubtitle = text => card.append(createElement('div', 'subtitle', text));
+
+  const contents = document.getElementById('contents');
+  contents.replaceChildren();
+
+  if (focusNode.type) {
+    const type = focusNode.type;
+    addSubtitle(`${type.kind} in the namespace ${type.namespace}`);
+    const fileLine = createElement('div', 'subtitle');
+    fileLine.append(createSourceLink(`${type.file}:${type.line}`, type.file, type.line, []));
+    card.append(fileLine);
+    contents.append(createInheritancePanel(focusNode));
+    return;
+  }
+  if (focusNode.project) {
+    addSubtitle(`${focusNode.project.topLevelDirectory} · ${focusNode.project.tier}`);
+    addSubtitle(focusNode.project.path);
+  }
+  if (!isLeaf(focusNode)) {
+    addSubtitle(countText(focusNode.leafIndexes.length));
+  }
+  if (focusNode.children.length === 0) {
+    return;
+  }
+
+  const panel = createElement('div', 'panel');
+  panel.append(createElement('h3', '', 'Contents'));
+  contents.append(panel);
+
+  const appendList = nodes => {
+    const list = createElement('ul');
+    for (const node of nodes) {
+      const item = createElement('li');
+      item.append(createFocusLink(node));
+      if (node.type) {
+        item.append(createElement('span', 'muted', ' ' + node.type.kind));
+      } else if (!isLeaf(node)) {
+        item.append(` (${node.leafIndexes.length})`);
+      }
+      list.append(item);
+    }
+    panel.append(list);
+  };
+
+  appendList(focusNode.children);
+}
+
+// Shows the base classes above the focused type and the derived types below it.
+function createInheritancePanel(focusNode) {
+  const focusIndex = focusNode.leafIndex;
+  const focusType = focusNode.type;
+  const panel = createElement('div', 'panel');
+  panel.append(createElement('h3', '', 'Inheritance'));
+
+  let lineCount = 0;
+  const appendLine = (depth, content, isFocus) => {
+    const line = createElement('div', isFocus ? 'tree-line focus' : 'tree-line');
+    line.style.paddingLeft = (depth * 16) + 'px';
+    line.append(depth > 0 ? '└ ' : '', content);
+    panel.append(line);
+    lineCount++;
+  };
+  const typeLink = typeIndex => {
+    const fragment = document.createDocumentFragment();
+    fragment.append(createFocusLink(leafNodes[typeIndex]));
+    if (types[typeIndex].project !== focusType.project) {
+      fragment.append(
+        createElement('span', 'muted', ' ' + projects[types[typeIndex].project].name));
+    }
+    return fragment;
+  };
+
+  // A class has one chain of base classes. An interface can inherit several interfaces,
+  // which are listed in one line instead.
+  const baseChain = [];
+  if (focusType.kind !== 'interface') {
+    for (let index = focusIndex;
+         baseTypesOf[index].length > 0 && !baseChain.includes(baseTypesOf[index][0]);
+         index = baseTypesOf[index][0]) {
+      baseChain.unshift(baseTypesOf[index][0]);
+    }
+  }
+
+  const externalBaseType = types[baseChain[0] ?? focusIndex].externalBaseType;
+  let depth = 0;
+  if (externalBaseType) {
+    appendLine(depth++, createElement('span', 'muted', externalBaseType + ' (not in this repository)'));
+  }
+  for (const baseIndex of baseChain) {
+    appendLine(depth++, typeLink(baseIndex));
+  }
+  appendLine(depth, focusNode.name, true);
+
+  const appendDerivedTypes = (typeIndex, derivedDepth, visitedIndexes) => {
+    const derivedIndexes = derivedTypesOf[typeIndex]
+      .filter(index => !visitedIndexes.has(index))
+      .sort((first, second) => types[first].name.localeCompare(types[second].name));
+    for (const derivedIndex of derivedIndexes) {
+      if (lineCount >= 150) {
+        return;
+      }
+      visitedIndexes.add(derivedIndex);
+      appendLine(derivedDepth, typeLink(derivedIndex));
+      appendDerivedTypes(derivedIndex, derivedDepth + 1, visitedIndexes);
+    }
+  };
+  appendDerivedTypes(focusIndex, depth + 1, new Set([focusIndex]));
+  if (lineCount >= 150) {
+    panel.append(createElement('div', 'hint', 'Only the first 150 lines are shown.'));
+  }
+
+  const appendTypeList = (title, typeIndexes) => {
+    if (typeIndexes.length === 0) {
+      return;
+    }
+    const line = createElement('div', 'tree-list');
+    line.append(createElement('span', 'muted', title + ' '));
+    typeIndexes.forEach((typeIndex, position) => {
+      line.append(position > 0 ? ', ' : '', createFocusLink(leafNodes[typeIndex]));
+    });
+    panel.append(line);
+  };
+  appendTypeList('Implements:', interfacesOf[focusIndex]);
+  if (focusType.kind === 'interface') {
+    appendTypeList('Inherits the interfaces:', baseTypesOf[focusIndex]);
+  }
+
+  return panel;
+}
+
+// Lists the references behind the selected row.
+function renderDetails(focusNode) {
+  const details = document.getElementById('details');
+  details.replaceChildren();
+
+  const panel = createElement('div', 'panel');
+  details.append(panel);
+
+  const selectedNode = state.selection && nodesById.get(state.selection.nodeId);
+  if (!selectedNode) {
+    panel.append(createElement(
+      'div', 'hint',
+      'Click a row to list the references behind it. ' +
+      'Click ▸ to expand a group. Double click a row to make it the focus.'));
+    return;
+  }
+
+  const side = state.selection.side;
+  const reached = sides[side].reached;
+  const focusIndexes = new Set(focusNode.leafIndexes);
+  const selectedIndexes = selectedNode.leafIndexes.filter(index => reached.has(index));
+
+  panel.append(createElement(
+    'h3', '',
+    side === 'uses' ? `${focusNode.name} uses ${selectedNode.name}`
+                    : `${selectedNode.name} uses ${focusNode.name}`));
+
+  const leafLink = index => createFocusLink(leafNodes[index]);
+
+  // The opposite direction leads from a selected leaf back to the focus leaves.
+  const oppositeAdjacency = side === 'uses' ? usedByOf : usesOf;
+
+  const directList = createElement('ul');
+  const indirectList = createElement('ul');
+  let directCount = 0;
+  let indirectCount = 0;
+
+  for (const selectedIndex of selectedIndexes) {
+    if (reached.get(selectedIndex).distance === 1) {
+      for (const focusIndex of oppositeAdjacency[selectedIndex]) {
+        if (!focusIndexes.has(focusIndex)) {
+          continue;
+        }
+        directCount++;
+        if (directCount > listedReferenceLimit) {
+          continue;
+        }
+        const [fromIndex, toIndex] =
+          side === 'uses' ? [focusIndex, selectedIndex] : [selectedIndex, focusIndex];
+        const item = createElement('li');
+        item.append(leafLink(fromIndex), ' → ', leafLink(toIndex));
+        if (state.level === 'type') {
+          const kind = typeReferenceKinds.get(fromIndex * types.length + toIndex);
+          item.append(createElement(
+            'span', 'muted',
+            ` ${referenceKindNames[kind]} · ${projects[types[selectedIndex].project].name}`));
+          if (isServed) {
+            const membersLink = createElement('span', 'link members-link', 'members');
+            membersLink.title = 'List the members that cause this reference';
+            membersLink.addEventListener('click', () => showMembers(item, fromIndex, toIndex));
+            item.append(' ', membersLink);
+          }
+        }
+        directList.append(item);
+      }
+      continue;
+    }
+
+    indirectCount++;
+    if (indirectCount > listedReferenceLimit) {
+      continue;
+    }
+
+    // One shortest chain of references between the focus and the indirectly reached leaf
+    const chain = [selectedIndex];
+    for (let entry = reached.get(selectedIndex); entry; entry = reached.get(entry.previousIndex)) {
+      chain.push(entry.previousIndex);
+    }
+    if (side === 'uses') {
+      chain.reverse();
+    }
+    const item = createElement('li');
+    chain.forEach((index, position) => {
+      if (position > 0) {
+        item.append(' → ');
+      }
+      item.append(leafLink(index));
+    });
+    indirectList.append(item);
+  }
+
+  const appendList = (title, list, count) => {
+    if (count === 0) {
+      return;
+    }
+    panel.append(createElement('div', 'hint', `${title} (${count}):`), list);
+    if (count > listedReferenceLimit) {
+      panel.append(createElement(
+        'div', 'hint',
+        `Only the first ${listedReferenceLimit} are listed. ` +
+        'Expand the group and select a smaller row to see the others.'));
+    }
+  };
+  appendList('Direct references', directList, directCount);
+  appendList('Indirect only, with one shortest chain each', indirectList, indirectCount);
+
+  if (state.level !== 'type') {
+    return;
+  }
+  if (!isServed) {
+    panel.append(createElement(
+      'div', 'hint',
+      'To list the members behind a reference and to show source files, start the tool ' +
+      'with the argument "serve".'));
+    return;
+  }
+  // A short list is small enough to load the members of every reference at once.
+  const membersLinks = directList.querySelectorAll('.members-link');
+  if (membersLinks.length <= 3) {
+    membersLinks.forEach(link => link.click());
+  }
+}
+
+// Asks the tool for the members of the referencing type that mention the referenced type,
+// and lists them below the reference.
+async function showMembers(item, fromIndex, toIndex) {
+  if (item.querySelector('ul')) {
+    return;
+  }
+  const list = createElement('ul');
+  list.append(createElement('li', 'hint', 'Loading…'));
+  item.append(list);
+
+  try {
+    const response = await fetch(`api/references?from=${fromIndex}&to=${toIndex}`);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const members = await response.json();
+    list.replaceChildren();
+
+    for (const member of members) {
+      const mentionLines = member.mentions.map(mention => mention.line);
+      const memberItem = createElement('li');
+      memberItem.append(createSourceLink(member.name, member.file, member.line, mentionLines));
+
+      const mentionList = createElement('ul');
+      for (const mention of member.mentions) {
+        const mentionItem = createElement('li');
+        mentionItem.append(
+          createSourceLink(`line ${mention.line}`, member.file, mention.line, mentionLines),
+          createElement('span', 'muted', ' ' + mention.target));
+        mentionList.append(mentionItem);
+      }
+      memberItem.append(mentionList);
+      list.append(memberItem);
+    }
+    if (members.length === 0) {
+      list.append(createElement('li', 'hint', 'No mention was found in the source files.'));
+    }
+  } catch (error) {
+    list.replaceChildren(
+      createElement('li', 'hint', 'The members could not be loaded: ' + error.message));
+  }
+}
+
+// Draws one line between the focus card and each visible row that is not an expanded group.
+function drawConnectors() {
+  const main = document.querySelector('main').getBoundingClientRect();
+  const card = document.getElementById('card').getBoundingClientRect();
+  const cardMiddle = card.top + card.height / 2 - main.top;
+  const paths = document.getElementById('connectorPaths');
+  paths.replaceChildren();
+
+  for (const side of Object.keys(sides)) {
+    const container = document.querySelector(`#${side} .rows`);
+    const visibleArea = container.getBoundingClientRect();
+
+    for (const row of container.querySelectorAll('.row:not(.expanded)')) {
+      const rectangle = row.getBoundingClientRect();
+      const rowMiddle = rectangle.top + rectangle.height / 2;
+      if (rowMiddle < visibleArea.top || rowMiddle > visibleArea.bottom) {
+        continue;
+      }
+
+      const [startX, startY, endX, endY] = side === 'usedBy'
+        ? [visibleArea.right - main.left, rowMiddle - main.top, card.left - main.left, cardMiddle]
+        : [card.right - main.left, cardMiddle,
+           rectangle.left + parseFloat(row.style.paddingLeft) - 4 - main.left,
+           rowMiddle - main.top];
+      const middleX = (startX + endX) / 2;
+
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute(
+        'd', `M${startX},${startY} C${middleX},${startY} ${middleX},${endY} ${endX},${endY}`);
+      path.setAttribute('marker-end', 'url(#arrowHead)');
+      path.classList.toggle('selected', row.classList.contains('selected'));
+
+      // A wider invisible line on top, so that the thin line is easy to click
+      const clickArea = path.cloneNode();
+      clickArea.removeAttribute('marker-end');
+      clickArea.setAttribute('class', 'click-area');
+      clickArea.addEventListener('click', () => row.click());
+      paths.append(path, clickArea);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- interaction
+
+// The focus and the selected row are part of the address, so that a view can be bookmarked.
+function setFocus(nodeId) {
+  location.hash = new URLSearchParams({ focus: nodeId }).toString();
+}
+
+function selectRow(side, nodeId) {
+  state.selection = { side, nodeId };
+  history.replaceState(
+    null, '',
+    '#' + new URLSearchParams({ focus: state.focusId, selected: `${side}:${nodeId}` }));
+  render(false);
+}
+
+function setLevel(level) {
+  state.level = level;
+  document.getElementById('level').value = level;
+  buildDependencies();
+  buildContainmentTree();
+}
+
+function applyHash() {
+  const parameters = new URLSearchParams(location.hash.slice(1));
+  state.focusId = parameters.get('focus') ?? '';
+  if (/^(type|namespace):/.test(state.focusId) && state.level !== 'type') {
+    setLevel('type');
+  }
+
+  const selected = parameters.get('selected');
+  const separatorIndex = selected ? selected.indexOf(':') : -1;
+  state.selection = separatorIndex > 0 && sides[selected.slice(0, separatorIndex)]
+    ?{ side: selected.slice(0, separatorIndex), nodeId: selected.slice(separatorIndex + 1) }
+    : null;
+
+  render(true);
+
+  // A selected row inside a collapsed group is not visible: expand the groups above it.
+  const selectedNode = state.selection && nodesById.get(state.selection.nodeId);
+  if (selectedNode) {
+    for (let node = selectedNode.parent; node; node = node.parent) {
+      state.expandedGroupIds[state.selection.side].add(node.id);
+    }
+    render(false);
+  }
+}
+
+function initializeSearch() {
+  const entries = [
+    ...projects.map(project => ({ label: project.name, id: project.path })),
+    ...types.map(type => ({
+      label: `${type.name} — ${type.namespace} (${projects[type.project].name})`,
+      id: getTypeId(type)
+    }))
+  ];
+  for (const entry of entries) {
+    entry.searchText = entry.label.toLowerCase();
+  }
+
+  const search = document.getElementById('search');
+  const suggestions = document.getElementById('projectNames');
+
+  search.addEventListener('input', () => {
+    const text = search.value.trim().toLowerCase();
+    suggestions.replaceChildren();
+    if (text.length < 2) {
+      return;
+    }
+    const matches = entries.filter(entry => entry.searchText.includes(text));
+    matches.sort((first, second) =>
+      first.searchText.indexOf(text) - second.searchText.indexOf(text) ||
+      first.label.length - second.label.length);
+    for (const entry of matches.slice(0, 40)) {
+      suggestions.append(new Option(entry.label));
+    }
+  });
+  search.addEventListener('change', () => {
+    const entry = entries.find(candidate => candidate.label === search.value);
+    if (entry) {
+      search.value = '';
+      setFocus(entry.id);
+    }
+  });
+}
+
+function initialize() {
+  document.getElementById('generated').textContent =
+    `${projects.length} projects · ${types.length} types · generated ${model.generated}`;
+
+  const legend = document.getElementById('legend');
+  for (const tierName of model.tiers) {
+    const entry = createElement('span');
+    entry.append(createTierDot(tierName), ' ' + tierName);
+    legend.append(entry);
+  }
+
+  initializeSearch();
+
+  document.getElementById('useVisualStudioLabel').hidden = !isServed;
+
+  document.getElementById('level').addEventListener('change', event => {
+    // A focused type has no node at the project level: focus its project instead.
+    const focusedType = nodesById.get(state.focusId)?.type;
+    setLevel(event.target.value);
+    state.selection = null;
+    if (focusedType && state.level === 'project') {
+      setFocus(projects[focusedType.project].path);
+    } else {
+      render(true);
+    }
+  });
+  document.getElementById('grouping').addEventListener('change', event => {
+    state.grouping = event.target.value;
+    state.selection = null;
+    buildContainmentTree();
+    render(true);
+  });
+  document.getElementById('includeIndirect').addEventListener('change', event => {
+    state.includeIndirect = event.target.checked;
+    render(true);
+  });
+
+  for (const container of document.querySelectorAll('.rows, #focus')) {
+    container.addEventListener('scroll', drawConnectors);
+  }
+  window.addEventListener('resize', drawConnectors);
+  window.addEventListener('hashchange', applyHash);
+
+  setLevel('project');
+  applyHash();
+}
+
+initialize();
+</script>
+</body>
+</html>
+

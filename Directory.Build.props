@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- Settings shared by all projects of this repository -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!-- Package information -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Authors>Emanuel Mahler</Authors>
+    <Copyright>Copyright (c) 2026 Emanuel Mahler</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/emahler/dotnet-dependency-navigator</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/emahler/dotnet-dependency-navigator.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Browse the dependencies of a .NET code base in a hierarchical view: what a project, namespace or type uses and what uses it, with inheritance trees, the methods behind each reference and source links into Visual Studio.</Description>
+  </PropertyGroup>
+
+</Project>

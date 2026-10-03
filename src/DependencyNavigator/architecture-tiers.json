@@ -1,0 +1,46 @@
+{
+  "tiers": [
+    {
+      "name": "Tests and samples",
+      "patterns": [
+        "*.Test", "*.Tests", "*.UnitTests", "*.IntegrationTests", "*.TestUtils", "*.Samples",
+        "*.Sample", "*.Demo"
+      ]
+    },
+    {
+      "name": "Executables",
+      "patterns": [ "*.Console", "*.Cli", "*.App", "*.Host", "*.Launcher" ]
+    },
+    {
+      "name": "User interface",
+      "patterns": [ "*.UI", "*.UI.*", "*.Web", "*.Blazor", "*.Wpf", "*.WinForms", "*.Controls" ]
+    },
+    {
+      "name": "Services",
+      "patterns": [ "*.Api", "*.Service", "*.Services", "*.Microservices", "*.Microservices.*" ]
+    },
+    {
+      "name": "Domain services",
+      "patterns": [ "*.DomainServices", "*.DomainServices.*", "*.Application" ]
+    },
+    {
+      "name": "Domain model",
+      "patterns": [ "*.DomainModel", "*.DomainModel.*", "*.Domain", "*.Model", "*.Models" ]
+    },
+    {
+      "name": "Data access",
+      "patterns": [ "*.Persistence", "*.Persistence.*", "*.Data", "*.DataAccess", "*.Repositories" ]
+    },
+    {
+      "name": "Foundation",
+      "patterns": [
+        "*.Commons", "*.Commons.*", "*.Common", "*.Core", "*.Utils", "*.Shared",
+        "*.Infrastructure"
+      ]
+    },
+    {
+      "name": "Other",
+      "patterns": [ "*" ]
+    }
+  ]
+}
