@@ -6,6 +6,7 @@
 <title>Dependency navigator</title>
 <style>
   :root {
+    color-scheme: light dark;
     --background: #f6f7f9;
     --surface: #ffffff;
     --border: #d5d9e0;
@@ -58,6 +59,56 @@
     padding: 3px 6px;
   }
   header input[type=search] { width: 340px; }
+  #searchBox { position: relative; }
+  #searchResults {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 10;
+    width: 640px;
+    max-width: 90vw;
+    max-height: 60vh;
+    margin-top: 4px;
+    overflow-y: scroll;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  }
+  .search-heading {
+    position: sticky;
+    top: 0;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--hover);
+    border-bottom: 1px solid var(--border);
+  }
+  .search-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    scroll-margin-top: 26px;
+  }
+  .search-item .muted { overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: var(--hover); }
+  .search-item.active { background: var(--accent-soft); }
+  details.namespace { margin-top: 4px; }
+  details.namespace summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+  .namespace-type {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0 1px 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .search-note { padding: 6px 8px; font-size: 12px; color: var(--text-muted); }
   #legend { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--text-muted); font-size: 12px; }
   #generated { margin-left: auto; color: var(--text-muted); font-size: 12px; }
   main {
@@ -165,8 +216,11 @@
 <body>
 <header>
   <h1>Dependency navigator</h1>
-  <input id="search" type="search" list="projectNames" placeholder="Find a project or a type by name">
-  <datalist id="projectNames"></datalist>
+  <span id="searchBox">
+    <input id="search" type="search" autocomplete="off"
+           placeholder="Find a project or a type (* stands for any text)">
+    <div id="searchResults" hidden></div>
+  </span>
   <label>Show dependencies between
     <select id="level">
       <option value="project">projects (project references)</option>
@@ -249,6 +303,7 @@ const state = {
   includeIndirect: false,
   focusId: '',
   selection: null,                       // { side, nodeId }
+  collapsedNamespaceIds: new Set(),      // in the contents of the focused project
   expandedGroupIds: { usedBy: new Set(), uses: new Set() }
 };
 
@@ -541,6 +596,15 @@ function render(resetExpansion) {
   drawConnectors();
 }
 
+// Returns all rows of a side column that are the given number of levels below the top rows.
+function getRowsAtDepth(topRows, depth) {
+  let rows = topRows;
+  for (let level = 0; level < depth; level++) {
+    rows = rows.flatMap(row => row.children);
+  }
+  return rows;
+}
+
 // Names the inheritance between the focused type and the type of a row, or returns null
 // if the reference between them is an ordinary use.
 function getInheritanceLabel(side, focusNode, rowNode) {
@@ -586,10 +650,21 @@ function renderSide(side, container, focusNode) {
 
     const toggle = createElement('span', 'toggle', isGroup ? (isExpanded ? '▾' : '▸') : '');
     if (isGroup) {
+      toggle.title = 'Hold the Ctrl key to expand or collapse all groups of this level';
       toggle.addEventListener('click', event => {
         event.stopPropagation();
-        if (!expandedIds.delete(node.id)) {
-          expandedIds.add(node.id);
+        // With the Ctrl key, all groups at the same depth of this column follow the
+        // clicked group.
+        const groupIds = event.ctrlKey || event.metaKey
+          ? getRowsAtDepth(topRows, depth).filter(other => !isLeaf(other.node))
+                                          .map(other => other.node.id)
+          : [node.id];
+        for (const groupId of groupIds) {
+          if (isExpanded) {
+            expandedIds.delete(groupId);
+          } else {
+            expandedIds.add(groupId);
+          }
         }
         render(false);
       });
@@ -655,6 +730,10 @@ function renderFocus(focusNode) {
   if (!isLeaf(focusNode)) {
     addSubtitle(countText(focusNode.leafIndexes.length));
   }
+  if (focusNode.project) {
+    contents.append(createProjectContentsPanel(focusNode.project));
+    return;
+  }
   if (focusNode.children.length === 0) {
     return;
   }
@@ -679,6 +758,86 @@ function renderFocus(focusNode) {
   };
 
   appendList(focusNode.children);
+}
+
+// Lists the namespaces of a project with their types. Each namespace can be collapsed and
+// is expanded at first. The panel is the same at the project level and at the type level,
+// so it is built from the model and not from the containment tree.
+function createProjectContentsPanel(project) {
+  const projectIndex = projects.indexOf(project);
+  const panel = createElement('div', 'panel');
+  panel.append(createElement('h3', '', 'Contents'));
+
+  const typesByNamespace = new Map();
+  for (const type of types) {
+    if (type.project !== projectIndex) {
+      continue;
+    }
+    if (!typesByNamespace.has(type.namespace)) {
+      typesByNamespace.set(type.namespace, []);
+    }
+    typesByNamespace.get(type.namespace).push(type);
+  }
+  if (typesByNamespace.size === 0) {
+    panel.append(createElement('div', 'hint', 'No types were found in the source files.'));
+    return panel;
+  }
+
+  const createLink = (text, nodeId, title) => {
+    const link = createElement('span', 'link', text);
+    link.title = title;
+    link.addEventListener('click', event => {
+      // A click on the name must not collapse the namespace as well
+      event.preventDefault();
+      setFocus(nodeId);
+    });
+    return link;
+  };
+
+  for (const namespace of [...typesByNamespace.keys()].sort()) {
+    const typesOfNamespace = typesByNamespace.get(namespace)
+      .sort((first, second) => first.name.localeCompare(second.name));
+
+    // The collapsed namespaces are remembered, because the panel is built again with
+    // every click on a row.
+    const namespaceId = `namespace:${project.name}/${namespace}`;
+    const group = createElement('details', 'namespace');
+    group.open = !state.collapsedNamespaceIds.has(namespaceId);
+    group.addEventListener('toggle', () => {
+      if (group.open) {
+        state.collapsedNamespaceIds.delete(namespaceId);
+      } else {
+        state.collapsedNamespaceIds.add(namespaceId);
+      }
+    });
+
+    const summary = createElement('summary');
+    summary.title = 'Hold the Ctrl key to expand or collapse all namespaces';
+    summary.addEventListener('click', event => {
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+      // With the Ctrl key, all namespaces follow the clicked namespace.
+      event.preventDefault();
+      const open = !group.open;
+      for (const otherGroup of panel.querySelectorAll('details.namespace')) {
+        otherGroup.open = open;
+      }
+    });
+    summary.append(
+      createLink(namespace || '(no namespace)', namespaceId, 'Focus this namespace'),
+      createElement('span', 'muted', ` (${typesOfNamespace.length})`));
+    group.append(summary);
+
+    for (const type of typesOfNamespace) {
+      const line = createElement('div', 'namespace-type');
+      line.append(createMarker({ type }),
+                  createLink(type.name, getTypeId(type), describe({ type })));
+      group.append(line);
+    }
+    panel.append(group);
+  }
+  return panel;
 }
 
 // Shows the base classes above the focused type and the derived types below it.
@@ -777,7 +936,9 @@ function renderDetails(focusNode) {
     panel.append(createElement(
       'div', 'hint',
       'Click a row to list the references behind it. ' +
-      'Click ▸ to expand a group. Double click a row to make it the focus.'));
+      'Click ▸ to expand a group. Double click a row to make it the focus. ' +
+      'Hold the Ctrl key while clicking ▸ to expand or collapse all groups of the same ' +
+      'level. This also works for the namespaces in the contents of a project.'));
     return;
   }
 
@@ -1019,40 +1180,155 @@ function applyHash() {
   }
 }
 
+// Turns the search text into a pattern: * stands for any text, ? for any one character.
+// Without these characters, the text only has to occur somewhere in the name.
+function createSearchPattern(text) {
+  return new RegExp(text.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+                        .replace(/\*/g, '.*')
+                        .replace(/\?/g, '.'));
+}
+
 function initializeSearch() {
-  const entries = [
-    ...projects.map(project => ({ label: project.name, id: project.path })),
-    ...types.map(type => ({
-      label: `${type.name} — ${type.namespace} (${projects[type.project].name})`,
-      id: getTypeId(type)
-    }))
-  ];
-  for (const entry of entries) {
-    entry.searchText = entry.label.toLowerCase();
+  const maximumProjectCount = 50;
+  const maximumTypeCount = 200;
+
+  // The entries have the same "project" or "type" property as the nodes of the
+  // containment tree, so that createMarker draws the same marker for them.
+  const projectEntries = projects.map(project => ({
+    name: project.name,
+    fullName: project.name,
+    detail: `${project.topLevelDirectory} · ${project.tier}`,
+    id: project.path,
+    project
+  }));
+  const typeEntries = types.map(type => ({
+    name: type.name,
+    fullName: `${type.namespace}.${type.name}`,
+    detail: `${type.namespace} · ${projects[type.project].name}`,
+    id: getTypeId(type),
+    type
+  }));
+  for (const entry of [...projectEntries, ...typeEntries]) {
+    entry.searchName = entry.name.toLowerCase();
+    entry.searchFullName = entry.fullName.toLowerCase();
   }
 
   const search = document.getElementById('search');
-  const suggestions = document.getElementById('projectNames');
+  const results = document.getElementById('searchResults');
+  let listedEntries = [];
+  let activeIndex = -1;
 
-  search.addEventListener('input', () => {
-    const text = search.value.trim().toLowerCase();
-    suggestions.replaceChildren();
-    if (text.length < 2) {
+  // Returns the matching entries, best match first: the whole name, then the start of
+  // the name, then a later position in the name, then a match only in the namespace.
+  const findMatches = (entries, pattern) => {
+    const matches = [];
+    for (const entry of entries) {
+      const nameMatch = pattern.exec(entry.searchName);
+      const match = nameMatch ?? pattern.exec(entry.searchFullName);
+      if (!match) {
+        continue;
+      }
+      const rank = !nameMatch ? 1000 + match.index
+        : match.index > 0 ? 2 + match.index
+        : match[0].length === entry.searchName.length ? 0 : 1;
+      matches.push({ entry, rank });
+    }
+    matches.sort((first, second) =>
+      first.rank - second.rank ||
+      first.entry.name.length - second.entry.name.length ||
+      first.entry.name.localeCompare(second.entry.name));
+    return matches.map(match => match.entry);
+  };
+
+  const setActive = index => {
+    results.querySelector('.search-item.active')?.classList.remove('active');
+    activeIndex = index;
+    const item = results.querySelectorAll('.search-item')[index];
+    if (item) {
+      item.classList.add('active');
+      item.scrollIntoView({ block: 'nearest' });
+    }
+  };
+
+  const choose = entry => {
+    search.value = '';
+    results.hidden = true;
+    setFocus(entry.id);
+  };
+
+  const appendSection = (title, matches, maximumCount) => {
+    if (matches.length === 0) {
       return;
     }
-    const matches = entries.filter(entry => entry.searchText.includes(text));
-    matches.sort((first, second) =>
-      first.searchText.indexOf(text) - second.searchText.indexOf(text) ||
-      first.label.length - second.label.length);
-    for (const entry of matches.slice(0, 40)) {
-      suggestions.append(new Option(entry.label));
+    const listed = matches.slice(0, maximumCount);
+    results.append(createElement(
+      'div', 'search-heading',
+      listed.length < matches.length
+        ? `${title} (the first ${listed.length} of ${matches.length})`
+        : `${title} (${matches.length})`));
+
+    for (const entry of listed) {
+      const item = createElement('div', 'search-item');
+      item.append(createMarker(entry), createElement('span', '', entry.name),
+                  createElement('span', 'muted', entry.detail));
+      item.addEventListener('click', () => choose(entry));
+      results.append(item);
+      listedEntries.push(entry);
+    }
+  };
+
+  const showResults = () => {
+    const text = search.value.trim().toLowerCase();
+    results.replaceChildren();
+    listedEntries = [];
+    activeIndex = -1;
+    results.hidden = text.length < 2;
+    if (results.hidden) {
+      return;
+    }
+
+    const pattern = createSearchPattern(text);
+    const projectMatches = findMatches(projectEntries, pattern);
+    const typeMatches = findMatches(typeEntries, pattern);
+
+    appendSection('Projects', projectMatches, maximumProjectCount);
+    appendSection('Types', typeMatches, maximumTypeCount);
+
+    if (listedEntries.length === 0) {
+      results.append(createElement('div', 'search-note', 'No project or type matches.'));
+      return;
+    }
+    if (projectMatches.length > maximumProjectCount || typeMatches.length > maximumTypeCount) {
+      results.append(createElement(
+        'div', 'search-note', 'Type more text to shorten the list.'));
+    }
+    results.scrollTop = 0;
+    setActive(0);
+  };
+
+  search.addEventListener('input', showResults);
+  search.addEventListener('focus', showResults);
+  search.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      results.hidden = true;
+      return;
+    }
+    if (results.hidden || listedEntries.length === 0) {
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      setActive(Math.max(0, Math.min(listedEntries.length - 1, activeIndex + step)));
+    } else if (event.key === 'Enter') {
+      choose(listedEntries[activeIndex]);
     }
   });
-  search.addEventListener('change', () => {
-    const entry = entries.find(candidate => candidate.label === search.value);
-    if (entry) {
-      search.value = '';
-      setFocus(entry.id);
+
+  // The list closes with a click outside of the search box.
+  document.addEventListener('mousedown', event => {
+    if (!document.getElementById('searchBox').contains(event.target)) {
+      results.hidden = true;
     }
   });
 }
