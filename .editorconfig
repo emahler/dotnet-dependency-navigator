@@ -1,0 +1,28 @@
+# https://editorconfig.org
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+indent_style = space
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_style = tab
+max_line_length = 100
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped
+csharp_prefer_braces = true
+
+[*.{csproj,props,targets,xml}]
+indent_style = space
+indent_size = 2
+
+[*.{json,html,css,js,yml,yaml}]
+indent_style = space
+indent_size = 2

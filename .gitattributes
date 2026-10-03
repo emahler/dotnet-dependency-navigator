@@ -1,0 +1,9 @@
+# Let git detect text files and store them with LF line endings in the repository.
+* text=auto
+
+*.cs text diff=csharp
+*.sh text eol=lf
+
+*.png binary
+*.ico binary
+*.snk binary
